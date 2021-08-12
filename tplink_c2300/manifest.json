@@ -1,0 +1,9 @@
+{
+    "domain": "tplink_c2300",
+    "name": "TPLink Archer C2300 device tracker",
+	"version": "1.0.0",
+    "documentation": "https://github.com/Electry/TPLink-C2300-HASS",
+    "requirements": [],
+    "dependencies": [],
+    "codeowners": ["@Electry"]
+}
