@@ -7,7 +7,8 @@ This project is based on the official TP-Link integration [removed](https://gith
 ## Installation
 Copy `tplink_c2300` folder into your `custom_components`
 
-TP-Link devices typically only allow one login at a time to the admin console.  This integration will count towards your one allowed login. Depending on how aggressively you configure device_tracker you may not be able to access the admin console of your TP-Link device without first stopping Home Assistant.
+TP-Link devices typically only allow one login at a time to the admin console. This integration will count towards your one allowed login. Depending on how aggressively you configure device_tracker you may not be able to access the admin console of your TP-Link device without first stopping Home Assistant, or the integration will stop working temporarily. This can be controlled using the `logout_others` parameter.
+
 Home Assistant takes a few seconds to login, collect data, and log out. If you log into the admin console manually, remember to log out so that Home Assistant can log in again.
 
 I recommend setting the time interval to 60s.
@@ -24,6 +25,7 @@ device_tracker:
     password: !secret tplink_c2300_password
     interval_seconds: 60
     consider_home: 120
+    logout_others: false
 ```
 
 Configuration variables:
@@ -32,6 +34,7 @@ Configuration variables:
 - **password** (*Required*): The plain-text password for your given local admin account.
 - **interval_seconds** (*Optional*): Seconds between each scan for new devices. (aka. how often should HASS connect to the router) (Default: 12)
 - **consider_home** (*Optional*): Seconds to wait till marking someone as not home after not being seen.
+- **logout_others** (*Optional*): Set to true if you want to log out any other logged in user on the router.
 
 You don't need to fill in any **username** field, as the username is hardcoded to `admin` on the latest C2300 firmware.
 

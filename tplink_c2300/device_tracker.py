@@ -1,6 +1,7 @@
 """Support for TP-Link Archer C2300"""
 from homeassistant.components.device_tracker import (DOMAIN, PLATFORM_SCHEMA, DeviceScanner)
 from homeassistant.const import (CONF_HOST, CONF_PASSWORD)
+from typing import Final
 import homeassistant.helpers.config_validation as config_validation
 import voluptuous as vol
 import logging
@@ -9,9 +10,12 @@ from . import tplink
 
 _LOGGER = logging.getLogger(__name__)
 
+CONF_LOGOUT_OTHERS: Final = 'logout_others'
+
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_HOST): config_validation.string,
     vol.Required(CONF_PASSWORD): config_validation.string,
+    vol.Optional(CONF_LOGOUT_OTHERS, default = False): config_validation.boolean,
 })
 
 def get_scanner(hass, config):
@@ -22,6 +26,7 @@ class TPLinkDeviceScanner(DeviceScanner):
     def __init__(self, config):
         self.host = config[CONF_HOST]
         self.password = config[CONF_PASSWORD]
+        self.logout_others = config[CONF_LOGOUT_OTHERS]
 
         self.last_results = {}
 
@@ -36,10 +41,12 @@ class TPLinkDeviceScanner(DeviceScanner):
     def scan_devices(self):
         """Scan for new devices and return a list with found device IDs."""
         api = tplink.TPLinkClient(self.host)
-        api.connect(self.password)
-        
+        api.connect(self.password, logout_others = self.logout_others)
+
         clients = api.get_client_list()
         _LOGGER.debug(clients)
+
+        api.logout()
 
         if 'success' not in clients or clients['success'] == False:
             return
@@ -48,7 +55,7 @@ class TPLinkDeviceScanner(DeviceScanner):
 
         for wireless in clients['data']['access_devices_wireless_host']:
             self._add_device(wireless)
-            
+
         for wired in clients['data']['access_devices_wired']:
             self._add_device(wired)
 

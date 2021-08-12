@@ -1,5 +1,5 @@
 '''
-TP-Link Archer C2300 API client
+TP-Link Archer C2300 API client v1.1.0
 
 Compatible (tested) with versions:
   Firmware: 1.1.1 Build 20200918 rel.67850(4555)
@@ -24,7 +24,6 @@ import requests
 import json
 import binascii
 import time
-import math
 import random
 import logging
 from Crypto.Cipher import AES
@@ -34,7 +33,11 @@ from Crypto.Util.Padding import pad, unpad
 from Crypto.Hash import MD5
 from base64 import b64encode, b64decode
 
-_LOGGER = logging.getLogger(__name__)
+class LoginException(Exception):
+    pass
+
+class UserConflictException(LoginException):
+    pass
 
 class TPLinkClient:
     HEADERS = {
@@ -44,7 +47,10 @@ class TPLinkClient:
         'X-Requested-With': 'XMLHttpRequest',
     }
 
-    def __init__(self, host):
+    def __init__(self, host, log_level = logging.INFO):
+        logging.basicConfig()
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(log_level)
         self.req = requests.Session()
 
         self.host = host
@@ -59,7 +65,7 @@ class TPLinkClient:
         stok = self.token if self.token is not None else ''
         return 'http://{}/cgi-bin/luci/;stok={}/{}?form={}'.format(self.host, stok, endpoint, form)
 
-    def connect(self, password):
+    def connect(self, password, logout_others = False):
         # hash the password
         self.md5_hash_pw = self.__hash_pw('admin', password)
 
@@ -74,7 +80,22 @@ class TPLinkClient:
         encrypted_pw = self.__encrypt_pw(password)
 
         # authenticate
-        self.token = self.__req_login(encrypted_pw)
+        try:
+            self.token = self.__req_login(encrypted_pw)
+        except UserConflictException as e:
+            if logout_others:
+                self.token = self.__req_login(encrypted_pw, True)
+            else:
+                raise e
+
+    def logout(self):
+        if self.token is None:
+            return False
+
+        success = self.__req_logout()
+        self.token = None
+
+        return success
 
     def get_client_list(self):
         url = self.get_url('admin/status', 'client_status')
@@ -111,9 +132,9 @@ class TPLinkClient:
 
         r = self.req.post(url, data = form_data, headers = self.HEADERS)
 
-        _LOGGER.debug('<Request  {}>'.format(r.url))
-        _LOGGER.debug(r)
-        _LOGGER.debug(r.text)
+        self.logger.debug('<Request  {}>'.format(r.url))
+        self.logger.debug(r)
+        self.logger.debug(r.text)
 
         assert r.text != ''
 
@@ -271,7 +292,7 @@ class TPLinkClient:
 
         return (auth_pub_key[0], auth_pub_key[1], response['data']['seq'])
 
-    def __req_login(self, encrypted_pw):
+    def __req_login(self, encrypted_pw, force_login = False):
         '''
         Return value (on successful login):
             stok - API auth token
@@ -282,8 +303,28 @@ class TPLinkClient:
             'password': encrypted_pw
         }
 
+        if force_login:
+            data['confirm'] = 'true'
+
         response = self.__request(url, data, encrypt = True, is_login = True)
-        _LOGGER.info(response)
+        self.logger.info(response)
+
+        assert 'success' in response
+
+        if response['success'] is False:
+            assert 'errorcode' in response
+
+            if response['errorcode'] == 'login failed':
+                attempts_allowed = response['data']['attemptsAllowed']
+                attempts_total = response['data']['failureCount'] + attempts_allowed
+
+                raise LoginException('Login failed, wrong password. Remaining attempts: {}/{}'.format(attempts_allowed, attempts_total))
+            elif response['errorcode'] == 'exceeded max attempts':
+                raise LoginException('Login failed, maximum login attempts exceeded. Please wait for 60-120 minutes.')
+            elif response['errorcode'] == 'user conflict':
+                raise UserConflictException('Login conflict. Someone else is logged in.')
+            else:
+                raise LoginException(response)
 
         assert response['success'] == True
 
@@ -300,3 +341,18 @@ class TPLinkClient:
         '''
 
         return response['data']['stok']
+
+    def __req_logout(self):
+        assert self.token is not None
+
+        url = self.get_url('admin/system', 'logout')
+        data = {
+            'operation': 'write'
+        }
+
+        response = self.__request(url, data, encrypt = True)
+        self.logger.info(response)
+
+        assert 'success' in response
+
+        return response['success']
